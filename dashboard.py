@@ -97,6 +97,7 @@ with st.sidebar:
     st.header("Configuration")
     api_base = st.text_input("API Base URL", value=DEFAULT_API_BASE)
     portfolio_id = st.text_input("Portfolio ID", value="P1")
+    show_technical = st.checkbox("Show technical JSON", value=False)
     st.markdown("---")
     if st.button("Check API Health"):
         ok, result = get_json(api_base, "/health")
@@ -111,44 +112,69 @@ tab_data, tab_overview, tab_var, tab_stress = st.tabs(
 )
 
 with tab_data:
+    st.subheader("Upload Portfolio Data")
+    st.caption("Use sample data for quick demo, or open advanced editors for custom JSON.")
+    col_top_a, col_top_b = st.columns(2)
+    with col_top_a:
+        if st.button("Load Sample Positions", use_container_width=True):
+            payload = sample_positions(portfolio_id)
+            ok, result = post_json(api_base, "/positions/upload", payload)
+            if ok:
+                st.success("Sample positions uploaded successfully")
+            else:
+                st.error("Failed to upload sample positions")
+            if show_technical:
+                st.json(result)
+    with col_top_b:
+        if st.button("Load Sample Prices", use_container_width=True):
+            payload = sample_prices()
+            ok, result = post_json(api_base, "/prices/upload", payload)
+            if ok:
+                st.success("Sample prices uploaded successfully")
+            else:
+                st.error("Failed to upload sample prices")
+            if show_technical:
+                st.json(result)
+
+    st.markdown("---")
     col_a, col_b = st.columns(2)
     with col_a:
-        st.subheader("Upload Positions")
-        pos_json = st.text_area(
-            "Positions JSON",
-            value=json.dumps(sample_positions(portfolio_id), indent=2),
-            height=320,
-        )
-        if st.button("Upload Positions", use_container_width=True):
-            try:
-                payload = json.loads(pos_json)
-                ok, result = post_json(api_base, "/positions/upload", payload)
-                if ok:
-                    st.success("Positions uploaded successfully")
-                    st.json(result)
-                else:
-                    st.error("Failed to upload positions")
-                    st.json(result)
-            except json.JSONDecodeError as exc:
-                st.error(f"Invalid JSON: {exc}")
+        with st.expander("Advanced: Custom Positions JSON"):
+            pos_json = st.text_area(
+                "Positions JSON",
+                value=json.dumps(sample_positions(portfolio_id), indent=2),
+                height=260,
+            )
+            if st.button("Upload Custom Positions", use_container_width=True):
+                try:
+                    payload = json.loads(pos_json)
+                    ok, result = post_json(api_base, "/positions/upload", payload)
+                    if ok:
+                        st.success("Custom positions uploaded successfully")
+                    else:
+                        st.error("Failed to upload custom positions")
+                    if show_technical:
+                        st.json(result)
+                except json.JSONDecodeError as exc:
+                    st.error(f"Invalid JSON: {exc}")
 
     with col_b:
-        st.subheader("Upload Prices")
-        prices_json = st.text_area(
-            "Prices JSON", value=json.dumps(sample_prices(), indent=2), height=320
-        )
-        if st.button("Upload Prices", use_container_width=True):
-            try:
-                payload = json.loads(prices_json)
-                ok, result = post_json(api_base, "/prices/upload", payload)
-                if ok:
-                    st.success("Prices uploaded successfully")
-                    st.json(result)
-                else:
-                    st.error("Failed to upload prices")
-                    st.json(result)
-            except json.JSONDecodeError as exc:
-                st.error(f"Invalid JSON: {exc}")
+        with st.expander("Advanced: Custom Prices JSON"):
+            prices_json = st.text_area(
+                "Prices JSON", value=json.dumps(sample_prices(), indent=2), height=260
+            )
+            if st.button("Upload Custom Prices", use_container_width=True):
+                try:
+                    payload = json.loads(prices_json)
+                    ok, result = post_json(api_base, "/prices/upload", payload)
+                    if ok:
+                        st.success("Custom prices uploaded successfully")
+                    else:
+                        st.error("Failed to upload custom prices")
+                    if show_technical:
+                        st.json(result)
+                except json.JSONDecodeError as exc:
+                    st.error(f"Invalid JSON: {exc}")
 
 with tab_overview:
     st.subheader("Portfolio Overview")
@@ -157,10 +183,22 @@ with tab_overview:
         if ok:
             st.success("Overview fetched")
             st.metric("Total Market Value (PKR)", f"{result.get('total_market_value', 0):,.2f}")
-            st.json(result)
+            holdings = result.get("holdings", [])
+            if holdings:
+                st.dataframe(holdings, use_container_width=True)
+            else:
+                st.info("No holdings returned for this portfolio.")
+            top5 = result.get("top_5_concentration", [])
+            if top5:
+                st.subheader("Top 5 Concentration")
+                st.dataframe(top5, use_container_width=True)
+            if show_technical:
+                with st.expander("Technical JSON"):
+                    st.json(result)
         else:
             st.error("Failed to fetch overview")
-            st.json(result)
+            if show_technical:
+                st.json(result)
 
 with tab_var:
     st.subheader("Value at Risk (VaR)")
@@ -179,15 +217,21 @@ with tab_var:
         ok, result = post_json(api_base, "/risk/var", payload)
         if ok:
             st.success("VaR calculated")
-            st.metric("Historical VaR %", f"{result.get('historical_var_pct', 0) * 100:.2f}%")
-            st.metric(
-                "Historical VaR Amount (PKR)",
-                f"{result.get('historical_var_amount_pkr', 0):,.2f}",
-            )
-            st.json(result)
+            col_var_1, col_var_2 = st.columns(2)
+            with col_var_1:
+                st.metric("Historical VaR %", f"{result.get('historical_var_pct', 0) * 100:.2f}%")
+            with col_var_2:
+                st.metric(
+                    "Historical VaR Amount (PKR)",
+                    f"{result.get('historical_var_amount_pkr', 0):,.2f}",
+                )
+            if show_technical:
+                with st.expander("Technical JSON"):
+                    st.json(result)
         else:
             st.error("Failed to calculate VaR")
-            st.json(result)
+            if show_technical:
+                st.json(result)
 
 with tab_stress:
     st.subheader("Stress Test")
@@ -204,10 +248,20 @@ with tab_stress:
         ok, result = post_json(api_base, "/risk/stress", payload)
         if ok:
             st.success("Stress test completed")
-            st.metric("Base Market Value", f"{result.get('base_market_value', 0):,.2f}")
-            st.metric("Stressed Market Value", f"{result.get('stressed_market_value', 0):,.2f}")
-            st.metric("Portfolio PnL Impact", f"{result.get('portfolio_pnl_impact', 0):,.2f}")
-            st.json(result)
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                st.metric("Base Market Value", f"{result.get('base_market_value', 0):,.2f}")
+            with col_s2:
+                st.metric("Stressed Market Value", f"{result.get('stressed_market_value', 0):,.2f}")
+            with col_s3:
+                st.metric("Portfolio PnL Impact", f"{result.get('portfolio_pnl_impact', 0):,.2f}")
+            details = result.get("details", [])
+            if details:
+                st.dataframe(details, use_container_width=True)
+            if show_technical:
+                with st.expander("Technical JSON"):
+                    st.json(result)
         else:
             st.error("Failed to run stress test")
-            st.json(result)
+            if show_technical:
+                st.json(result)
